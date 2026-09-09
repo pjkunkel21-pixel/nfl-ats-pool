@@ -1,0 +1,10 @@
+# fetch_lines.py uses only the Python standard library.
+#
+# It does need two command-line programs on the PATH:
+#   pdftoppm   (poppler-utils)  -- renders the Circa PDF to an image
+#   tesseract  (tesseract-ocr)  -- reads the image
+#
+# macOS:          brew install poppler tesseract
+# Debian/Ubuntu:  sudo apt-get install poppler-utils tesseract-ocr
+# Windows:        https://github.com/oschwartz10612/poppler-windows/releases
+#                 https://github.com/UB-Mannheim/tesseract/wiki
