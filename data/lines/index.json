@@ -1,18 +1,7 @@
 {
   "season": 2026,
   "weeks": [
-    {
-      "week": 1,
-      "season": 2026,
-      "games": 16,
-      "warnings": 0
-    },
-    {
-      "week": 18,
-      "season": 2026,
-      "games": 16,
-      "warnings": 11
-    }
+    { "week": 1, "season": 2026, "games": 16, "warnings": 0 }
   ],
   "updatedAt": "2026-09-09T16:09:03+00:00"
 }
