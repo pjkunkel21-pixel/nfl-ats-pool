@@ -101,6 +101,19 @@ def nfl_season_year(today: dt.date | None = None) -> int:
 # 1. find the PDF
 # --------------------------------------------------------------------------
 
+def season_of_publish(date_str: str) -> int | None:
+    """Which NFL season a Circa sheet published on this date belongs to.
+
+    Weeks 17 and 18 are posted in January, i.e. the calendar year *after* the
+    season year -- so the year in the URL is not enough to tell seasons apart.
+    """
+    m = re.match(r"(\d{4})-(\d{2})", date_str or "")
+    if not m:
+        return None
+    year, month = int(m.group(1)), int(m.group(2))
+    return year - 1 if month <= 2 else year
+
+
 def find_spreads_pdf(week: int | None, season: int) -> tuple[str, int]:
     """Return (pdf_url, week). Newest published week if week is None."""
     found: dict[int, tuple[str, str]] = {}
@@ -118,9 +131,10 @@ def find_spreads_pdf(week: int | None, season: int) -> tuple[str, int]:
             if not hit:
                 continue
             wk, date = int(hit.group(1)), m.get("date", "")
-            # Weeks 17-18 land in January, i.e. the calendar year after the
-            # season year -- keep anything from this season's window.
-            if not re.search(rf"/({season}|{season + 1})/", url):
+            # Only this season's sheets. Judged by publish date, not by the
+            # year in the URL -- last season's Week 18 sheet lives under
+            # /<season+1>/01/ and would otherwise look like this season's.
+            if season_of_publish(date) != season:
                 continue
             if wk not in found or date > found[wk][1]:
                 found[wk] = (url, date)
@@ -495,7 +509,14 @@ def main() -> int:
             args.week = int(m.group(1))
         source, pdf_bytes = args.pdf, open(args.pdf, "rb").read()
     else:
-        source, week = find_spreads_pdf(args.week, args.season)
+        try:
+            source, week = find_spreads_pdf(args.week, args.season)
+        except RuntimeError as err:
+            # Not an error worth failing the job over: before Circa posts on
+            # Thursday there is simply nothing to fetch. Leave the existing
+            # week files alone and say so.
+            print(f"nothing to do: {err}", file=sys.stderr)
+            return 0
         args.week = week
         print(f"found: {source}", file=sys.stderr)
         pdf_bytes = get_bytes(source)
