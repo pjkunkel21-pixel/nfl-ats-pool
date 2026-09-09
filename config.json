@@ -1,20 +1,19 @@
 {
-  "poolName": "The Circa Five",
+  "poolName": "NFL ATS Picks Pool",
   "season": 2026,
   "picksPerWeek": 5,
   "firstWeek": 1,
   "lastWeek": 18,
 
-  "_apiUrl": "Paste your Apps Script web-app /exec URL here. Until you do, the page runs in demo mode: picks stay in your browser and nothing is shared.",
+  "_apiUrl": "https://script.google.com/macros/s/AKfycbx-JtbPP0IU7aKkXTdI5j9a4Gb6-cnqosNSr1L--dJEhbZ01I0lI083n8asdaQNqt4z9A/exec",
   "apiUrl": "",
 
   "entrants": [
     "Pat",
-    "Add",
-    "your",
-    "friends",
-    "here"
-  ],
+    "Nihal",
+    "Ruble",
+    "Matt",
+      ],
 
   "_scoring": "Circa Million rules: 1 point per winner, 0.5 per push, 0 per loss.",
   "scoring": { "win": 1, "push": 0.5, "loss": 0 }
