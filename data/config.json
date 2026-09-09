@@ -11,9 +11,8 @@
     "Pat",
     "Nihal",
     "Ruble",
-    "Matt",
-      ],
+    "Matt"
+  ],
 
-  "_scoring": "Circa Million rules: 1 point per winner, 0.5 per push, 0 per loss.",
   "scoring": { "win": 1, "push": 0.5, "loss": 0 }
 }
