@@ -1,0 +1,74 @@
+name: Update Circa lines
+
+# Circa posts the week's contest point spreads around 10am PT on Thursday.
+# This runs a bit after that, then retries later in the day in case the sheet
+# is late. Committing the same file twice is a no-op, so extra runs are cheap.
+on:
+  schedule:
+    - cron: '30 18 * * 4'   # Thu 18:30 UTC = 11:30am PT / 10:30am PDT
+    - cron: '30 21 * * 4'   # Thu 21:30 UTC — second look
+    - cron: '0  15 * * 5'   # Fri 15:00 UTC — last safety net before the weekend
+  workflow_dispatch:
+    inputs:
+      week:
+        description: 'NFL week (blank = newest published)'
+        required: false
+      season:
+        description: 'Season year (blank = current)'
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-lines
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install OCR tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq poppler-utils tesseract-ocr
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Fetch the Circa spreads
+        id: fetch
+        run: |
+          ARGS=""
+          [ -n "${{ inputs.week }}" ]   && ARGS="$ARGS --week ${{ inputs.week }}"
+          [ -n "${{ inputs.season }}" ] && ARGS="$ARGS --season ${{ inputs.season }}"
+          python scripts/fetch_lines.py $ARGS 2>&1 | tee run.log
+          echo "week=$(ls -t data/lines/week-*.json | head -1 | sed 's/.*week-\(.*\)\.json/\1/')" >> "$GITHUB_OUTPUT"
+
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "### Circa line pull"
+            echo
+            echo '```'
+            cat run.log 2>/dev/null || echo "the fetch step did not produce a log"
+            echo '```'
+            echo
+            echo "Anything flagged above can be fixed in \`admin.html\` on the live site."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Commit
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/lines
+          if git diff --cached --quiet; then
+            echo "no line changes"
+          else
+            git commit -m "Circa lines: week ${{ steps.fetch.outputs.week }}"
+            git push
+          fi
