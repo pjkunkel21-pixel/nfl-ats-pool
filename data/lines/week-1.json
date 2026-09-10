@@ -1,153 +1,166 @@
 {
   "season": 2026,
   "week": 1,
-  "source": "ESPN sportsbook lines (placeholder until Circa posts)",
-  "fetchedAt": "2026-09-09T14:54:59+00:00",
-  "warnings": [],
+  "source": "https://www.circasports.com/wp-content/uploads/2026/09/Circa-Sports-Million-VIII-Contest-Point-Spreads-Week-1.pdf",
+  "fetchedAt": "2026-09-10T21:04:07+00:00",
+  "warnings": [
+    "NE @ SEA: -3 (read from the home side only)",
+    "TB @ CIN: -3.5 (read from the home side only)",
+    "NYJ @ TEN: -1.5 (read from the home side only)",
+    "BAL @ IND: +3.5 (read from the away side only)",
+    "ATL @ PIT: no spread found on the Circa sheet",
+    "CHI @ CAR: +3 (read from the home side only)",
+    "BUF @ HOU: no spread found on the Circa sheet",
+    "MIA @ LV: -3.5 (read from the home side only)",
+    "GB @ MIN: no spread found on the Circa sheet",
+    "WSH @ PHI: no spread found on the Circa sheet",
+    "DAL @ NYG: no spread found on the Circa sheet",
+    "DEN @ KC: -3 (read from the home side only)"
+  ],
   "games": [
     {
       "espnId": "401872656",
-      "home": "SEA",
       "away": "NE",
+      "home": "SEA",
       "kickoff": "2026-09-10T00:20Z",
       "spread": -3.0,
-      "status": "book",
-      "note": "sportsbook line via ESPN, not the Circa sheet"
+      "status": "unverified",
+      "note": "read from the home side only"
     },
     {
       "espnId": "401872657",
-      "home": "LAR",
       "away": "SF",
+      "home": "LAR",
       "kickoff": "2026-09-11T00:35Z",
-      "spread": -3.5,
-      "status": "book",
-      "note": "sportsbook line via ESPN, not the Circa sheet"
+      "spread": -4.0,
+      "status": "verified",
+      "note": ""
     },
     {
       "espnId": "401872925",
-      "home": "CIN",
       "away": "TB",
+      "home": "CIN",
       "kickoff": "2026-09-13T17:00Z",
       "spread": -3.5,
-      "status": "book",
-      "note": "sportsbook line via ESPN, not the Circa sheet"
+      "status": "unverified",
+      "note": "read from the home side only"
     },
     {
       "espnId": "401872923",
-      "home": "DET",
       "away": "NO",
+      "home": "DET",
       "kickoff": "2026-09-13T17:00Z",
       "spread": -7.0,
-      "status": "book",
-      "note": "sportsbook line via ESPN, not the Circa sheet"
+      "status": "verified",
+      "note": ""
     },
     {
       "espnId": "401872924",
-      "home": "TEN",
       "away": "NYJ",
+      "home": "TEN",
       "kickoff": "2026-09-13T17:00Z",
       "spread": -1.5,
-      "status": "book",
-      "note": "sportsbook line via ESPN, not the Circa sheet"
+      "status": "unverified",
+      "note": "read from the home side only"
     },
     {
       "espnId": "401872659",
-      "home": "IND",
       "away": "BAL",
+      "home": "IND",
       "kickoff": "2026-09-13T17:00Z",
       "spread": 3.5,
-      "status": "book",
-      "note": "sportsbook line via ESPN, not the Circa sheet"
+      "status": "unverified",
+      "note": "read from the away side only"
     },
     {
       "espnId": "401872658",
-      "home": "PIT",
       "away": "ATL",
+      "home": "PIT",
       "kickoff": "2026-09-13T17:00Z",
-      "spread": -3.5,
-      "status": "book",
-      "note": "sportsbook line via ESPN, not the Circa sheet"
+      "spread": null,
+      "status": "missing",
+      "note": "no spread found on the Circa sheet"
     },
     {
       "espnId": "401872661",
-      "home": "CAR",
       "away": "CHI",
+      "home": "CAR",
       "kickoff": "2026-09-13T17:00Z",
       "spread": 3.0,
-      "status": "book",
-      "note": "sportsbook line via ESPN, not the Circa sheet"
+      "status": "unverified",
+      "note": "read from the home side only"
     },
     {
       "espnId": "401872922",
-      "home": "JAX",
       "away": "CLE",
+      "home": "JAX",
       "kickoff": "2026-09-13T17:00Z",
       "spread": -8.5,
-      "status": "book",
-      "note": "sportsbook line via ESPN, not the Circa sheet"
+      "status": "verified",
+      "note": ""
     },
     {
       "espnId": "401872660",
-      "home": "HOU",
       "away": "BUF",
+      "home": "HOU",
       "kickoff": "2026-09-13T17:00Z",
-      "spread": 1.5,
-      "status": "book",
-      "note": "sportsbook line via ESPN, not the Circa sheet"
+      "spread": null,
+      "status": "missing",
+      "note": "no spread found on the Circa sheet"
     },
     {
       "espnId": "401872928",
-      "home": "LV",
       "away": "MIA",
+      "home": "LV",
       "kickoff": "2026-09-13T20:25Z",
       "spread": -3.5,
-      "status": "book",
-      "note": "sportsbook line via ESPN, not the Circa sheet"
+      "status": "unverified",
+      "note": "read from the home side only"
     },
     {
       "espnId": "401872927",
-      "home": "MIN",
       "away": "GB",
+      "home": "MIN",
       "kickoff": "2026-09-13T20:25Z",
-      "spread": -1.5,
-      "status": "book",
-      "note": "sportsbook line via ESPN, not the Circa sheet"
+      "spread": null,
+      "status": "missing",
+      "note": "no spread found on the Circa sheet"
     },
     {
       "espnId": "401872929",
-      "home": "PHI",
       "away": "WSH",
+      "home": "PHI",
       "kickoff": "2026-09-13T20:25Z",
-      "spread": -5.5,
-      "status": "book",
-      "note": "sportsbook line via ESPN, not the Circa sheet"
+      "spread": null,
+      "status": "missing",
+      "note": "no spread found on the Circa sheet"
     },
     {
       "espnId": "401872926",
-      "home": "LAC",
       "away": "ARI",
+      "home": "LAC",
       "kickoff": "2026-09-13T20:25Z",
-      "spread": -9.5,
-      "status": "book",
-      "note": "sportsbook line via ESPN, not the Circa sheet"
+      "spread": -8.5,
+      "status": "verified",
+      "note": ""
     },
     {
       "espnId": "401872930",
-      "home": "NYG",
       "away": "DAL",
+      "home": "NYG",
       "kickoff": "2026-09-14T00:20Z",
-      "spread": 3.0,
-      "status": "book",
-      "note": "sportsbook line via ESPN, not the Circa sheet"
+      "spread": null,
+      "status": "missing",
+      "note": "no spread found on the Circa sheet"
     },
     {
       "espnId": "401872931",
-      "home": "KC",
       "away": "DEN",
+      "home": "KC",
       "kickoff": "2026-09-15T00:15Z",
-      "spread": -2.5,
-      "status": "book",
-      "note": "sportsbook line via ESPN, not the Circa sheet"
+      "spread": -3.0,
+      "status": "unverified",
+      "note": "read from the home side only"
     }
   ]
 }
