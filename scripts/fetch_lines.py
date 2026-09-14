@@ -59,6 +59,9 @@ TEAMS = {
 }
 # Characters tesseract commonly returns in place of the vulgar fraction "1/2".
 HALF_CHARS = "½%¥Yy)/,'\"‚`h·"
+# Glyphs a lone "1/2" can come back as. Digits are deliberately excluded so a
+# genuine one-point spread is never mistaken for half a point.
+BARE_HALF = HALF_CHARS + "il|!ItLJ"
 # Glyphs tesseract returns in place of a digit inside a spread.
 DIGIT_REPAIR = str.maketrans({
     "]": "7", "}": "7", "T": "7", "?": "7",
@@ -160,28 +163,64 @@ def find_spreads_pdf(week: int | None, season: int) -> tuple[str, int]:
 # 2. OCR
 # --------------------------------------------------------------------------
 
-def ocr_pdf(pdf_bytes: bytes) -> str:
+def _page_px(pdf: str, dpi: int) -> tuple[int, int]:
+    """Page size in pixels at this dpi, from pdfinfo."""
+    out = subprocess.run(["pdfinfo", pdf], capture_output=True, text=True).stdout
+    m = re.search(r"Page size:\s+([\d.]+) x ([\d.]+)", out)
+    if not m:
+        return 0, 0
+    return (int(float(m.group(1)) * dpi / 72), int(float(m.group(2)) * dpi / 72))
+
+
+def ocr_pdf(pdf_bytes: bytes) -> list[str]:
+    """OCR the sheet several ways and return every pass's text.
+
+    Circa prints two columns of games side by side. Tesseract in single-block
+    mode tries to read across both at once and drops rows where the columns
+    don't line up, so each half is also read on its own. Passes are combined by
+    majority vote in vote_rows(), which makes a row only has to survive one of
+    them.
+    """
     need("pdftoppm")
     need("tesseract")
+    dpi = 300
     with tempfile.TemporaryDirectory() as tmp:
         pdf = os.path.join(tmp, "spreads.pdf")
         with open(pdf, "wb") as f:
             f.write(pdf_bytes)
-        subprocess.run(
-            ["pdftoppm", "-r", "300", "-png", "-gray", pdf, os.path.join(tmp, "pg")],
-            check=True, capture_output=True,
-        )
-        pages = sorted(p for p in os.listdir(tmp) if p.endswith(".png"))
-        if not pages:
-            raise RuntimeError("could not render the PDF to an image")
-        out = []
-        for page in pages:
-            res = subprocess.run(
-                ["tesseract", os.path.join(tmp, page), "-", "--psm", "6"],
-                check=True, capture_output=True, text=True,
+
+        width, height = _page_px(pdf, dpi)
+        # full page, then the left and right halves with a little overlap
+        crops = [("full", [])]
+        if width and height:
+            half, over = width // 2, width // 20
+            crops += [
+                ("left",  ["-x", "0", "-y", "0", "-W", str(half + over), "-H", str(height)]),
+                ("right", ["-x", str(half - over), "-y", "0",
+                           "-W", str(width - half + over), "-H", str(height)]),
+            ]
+
+        texts = []
+        for name, crop in crops:
+            stem = os.path.join(tmp, name)
+            r = subprocess.run(
+                ["pdftoppm", "-r", str(dpi), "-png", "-gray"] + crop + [pdf, stem],
+                capture_output=True,
             )
-            out.append(res.stdout)
-        return "\n".join(out)
+            if r.returncode != 0:
+                continue
+            pages = sorted(f for f in os.listdir(tmp)
+                           if f.startswith(name) and f.endswith(".png"))
+            for page in pages:
+                res = subprocess.run(
+                    ["tesseract", os.path.join(tmp, page), "-", "--psm", "6"],
+                    capture_output=True, text=True,
+                )
+                if res.returncode == 0:
+                    texts.append(res.stdout)
+        if not texts:
+            raise RuntimeError("could not OCR the PDF")
+        return texts
 
 
 # --------------------------------------------------------------------------
@@ -235,6 +274,11 @@ def parse_spread(token: str):
         return 0.0
     sign = -1.0 if t[:1] in "-–—~" else 1.0
     body = t[1:] if t[:1] in "-–—~+" else t
+    # A half-point spread prints as a bare "1/2" with no whole number in front,
+    # so there is no digit for the usual path to find. Only non-digit glyphs
+    # count here, so a real "+1" still falls through and reads as one point.
+    if body and all(c in BARE_HALF for c in body):
+        return sign * 0.5
     digits = re.search(r"\d+", body)
     if not digits:
         # No digit survived OCR -- repair the glyphs that stand in for one.
@@ -259,32 +303,42 @@ def parse_spread(token: str):
     return sign * val
 
 
-ROW = re.compile(
-    r"""(?P<when>\d{1,2}[:.]\d{2}\s*[APap]\s?\.?[Mm]\.?|[A-Za-z]{3}\.?\s+\d{1,2})
-        [.,]?\s+
-        (?P<rot>\d{1,3})\s+
-        (?P<team>[A-Z0-9][A-Z0-9'.\- ]{2,20}?)\s+
-        (?P<spread>(?:[-+–—~]\s?[^\s]{1,5})|(?:[Pp][KkRr]))
+# A spread cell: a sign and something numeric, or a pick'em.
+_SPREAD = r"(?:[-+–—~]\s?[^\s]{1,5})|(?:[Pp][KkRr])"
+
+# What every row really carries is a nickname next to a spread. The date, the
+# kickoff time and the rotation number are decoration -- the rotation number is
+# never used -- and depending on them is what broke when Circa restyled the
+# sheet and the OCR started running "Sep 13" and "8" together as "Sep 138".
+# Small amounts of punctuation noise can land between the two ("COMMANDERS . _").
+TEAM_SPREAD = re.compile(
+    r"""(?P<team>[A-Z0-9][A-Z0-9'.\-]{1,14}(?:\s[A-Z0-9'.\-]{2,14})?)
+        [\s._:=~—-]{1,6}
+        (?P<spread>""" + _SPREAD + r""")
         (?=\s|$)""",
     re.X,
 )
 
 
 def parse_rows(text: str) -> list[dict]:
-    """Every (team, spread) cell on the sheet, in reading order per column."""
+    """Every (team, spread) cell on the sheet.
+
+    Anchored on the nickname rather than on the row's layout, so a restyled
+    sheet still parses. Anything that isn't one of the 32 nicknames is dropped
+    here, and anything that isn't in ESPN's schedule is dropped in reconcile().
+    """
     rows = []
     for line in text.splitlines():
-        # Two side-by-side columns share a line; findall walks left to right.
-        for m in ROW.finditer(line):
+        for m in TEAM_SPREAD.finditer(line):
             abbr = match_team(m.group("team"))
-            spread = parse_spread(m.group("spread"))
             if abbr is None:
+                continue
+            spread = parse_spread(m.group("spread"))
+            if spread is None:
                 continue
             rows.append({
                 "team": abbr,
                 "spread": spread,
-                "rot": int(m.group("rot")),
-                "when": m.group("when").strip(),
                 "raw_team": m.group("team").strip(),
                 "raw_spread": m.group("spread").strip(),
                 "column": m.start(),
@@ -295,6 +349,30 @@ def parse_rows(text: str) -> list[dict]:
 # --------------------------------------------------------------------------
 # 4. ESPN schedule + reconciliation
 # --------------------------------------------------------------------------
+
+def vote_rows(passes: list[list[dict]]) -> list[dict]:
+    """One spread per team, by majority across the OCR passes.
+
+    A glyph misread rarely repeats identically across a full-page read and a
+    single-column read, so the reading that shows up most often is almost
+    always the right one.
+    """
+    tally: dict[str, dict[float, int]] = {}
+    sample: dict[str, dict] = {}
+    for rows in passes:
+        for r in rows:
+            tally.setdefault(r["team"], {})
+            tally[r["team"]][r["spread"]] = tally[r["team"]].get(r["spread"], 0) + 1
+            sample.setdefault(r["team"], r)
+    out = []
+    for team, votes in tally.items():
+        best = max(votes.items(), key=lambda kv: (kv[1], -abs(kv[0])))[0]
+        row = dict(sample[team])
+        row["spread"] = best
+        row["votes"] = votes[best]
+        out.append(row)
+    return out
+
 
 def espn_schedule(season: int, week: int) -> list[dict]:
     url = f"{ESPN_SCOREBOARD}?dates={season}&seasontype=2&week={week}"
@@ -419,6 +497,30 @@ def reconcile(rows: list[dict], schedule: list[dict],
 # main
 # --------------------------------------------------------------------------
 
+def keep_manual(week: int, games: list[dict]) -> list[dict]:
+    """Don't let a scrape overwrite a line someone fixed by hand.
+
+    A spread edited in admin.html is marked "manual". The scraper has no way to
+    know better than the person who read the sheet, so those survive a re-run
+    unless --force says otherwise.
+    """
+    path = os.path.join(LINES_DIR, f"week-{week}.json")
+    if not os.path.exists(path):
+        return games
+    try:
+        with open(path) as f:
+            old = {str(g.get("espnId")): g for g in json.load(f).get("games", [])}
+    except Exception:
+        return games
+    for g in games:
+        prev = old.get(str(g.get("espnId")))
+        if prev and prev.get("status") == "manual" and prev.get("spread") is not None:
+            g["spread"] = prev["spread"]
+            g["status"] = "manual"
+            g["note"] = "set by hand; kept over the scraped value"
+    return games
+
+
 def write_week(season: int, week: int, games: list[dict], source: str,
                warnings: list[str]) -> str:
     os.makedirs(LINES_DIR, exist_ok=True)
@@ -469,6 +571,8 @@ def main() -> int:
     ap.add_argument("--strict", action="store_true",
                     help="exit non-zero if any game is not confidently parsed")
     ap.add_argument("--dry-run", action="store_true", help="print, do not write")
+    ap.add_argument("--force", action="store_true",
+                    help="overwrite lines that were set by hand in admin.html")
     ap.add_argument("--schedule-only", action="store_true",
                     help="build the week from ESPN's schedule with blank "
                          "spreads, to be filled in with admin.html")
@@ -521,9 +625,9 @@ def main() -> int:
         print(f"found: {source}", file=sys.stderr)
         pdf_bytes = get_bytes(source)
 
-    text = ocr_pdf(pdf_bytes)
-    rows = parse_rows(text)
-    print(f"OCR produced {len(rows)} team rows", file=sys.stderr)
+    texts = ocr_pdf(pdf_bytes)
+    rows = vote_rows([parse_rows(t) for t in texts])
+    print(f"OCR: {len(texts)} passes, {len(rows)} teams read", file=sys.stderr)
 
     schedule = espn_schedule(args.season, args.week)
     if not schedule:
@@ -542,8 +646,16 @@ def main() -> int:
                   f"{('   <- ' + g['note']) if g['note'] else ''}")
         return 0
 
+    if not args.force:
+        games = keep_manual(args.week, games)
+        warnings = [w for w in warnings
+                    if not any(g["status"] == "manual" and
+                               w.startswith(f"{g['away']} @ {g['home']}:")
+                               for g in games)]
     path = write_week(args.season, args.week, games, source, warnings)
-    print(f"wrote {path} ({len(games)} games, {len(warnings)} warnings)")
+    kept = sum(1 for g in games if g["status"] == "manual")
+    print(f"wrote {path} ({len(games)} games, {len(warnings)} warnings"
+          + (f", {kept} hand-set lines kept" if kept else "") + ")")
     for w in warnings:
         print(f"  warning: {w}", file=sys.stderr)
     return 0
