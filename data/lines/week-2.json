@@ -1,153 +1,159 @@
 {
   "season": 2026,
   "week": 2,
-  "source": "DraftKings via ESPN",
-  "fetchedAt": "2026-09-16T15:12:21+00:00",
-  "warnings": [],
+  "source": "https://www.circasports.com/wp-content/uploads/2026/09/Circa-Sports-Million-VIII-Contest-Point-Spreads-Week-2.pdf",
+  "fetchedAt": "2026-09-17T21:35:59+00:00",
+  "warnings": [
+    "NO @ BAL: -8.5 (read from the home side only)",
+    "WSH @ DAL: -4 (read from the away side only)",
+    "SEA @ ARI: +4 (read from the away side only)",
+    "MIA @ SF: -13 (read from the away side only)",
+    "IND @ KC: no spread found on the Circa sheet"
+  ],
   "games": [
     {
       "espnId": "401872932",
-      "home": "BUF",
       "away": "DET",
+      "home": "BUF",
       "kickoff": "2026-09-18T00:15Z",
       "spread": -5.5,
-      "status": "book",
-      "note": "DraftKings line via ESPN"
+      "status": "verified",
+      "note": ""
     },
     {
       "espnId": "401872933",
-      "home": "ATL",
       "away": "CAR",
+      "home": "ATL",
       "kickoff": "2026-09-20T17:00Z",
       "spread": 2.5,
-      "status": "book",
-      "note": "DraftKings line via ESPN"
+      "status": "verified",
+      "note": ""
     },
     {
       "espnId": "401872937",
-      "home": "CHI",
       "away": "MIN",
+      "home": "CHI",
       "kickoff": "2026-09-20T17:00Z",
-      "spread": -5.5,
-      "status": "book",
-      "note": "DraftKings line via ESPN"
+      "spread": -4.5,
+      "status": "verified",
+      "note": ""
     },
     {
       "espnId": "401872939",
-      "home": "TEN",
       "away": "PHI",
+      "home": "TEN",
       "kickoff": "2026-09-20T17:00Z",
       "spread": 7.0,
-      "status": "book",
-      "note": "DraftKings line via ESPN"
+      "status": "verified",
+      "note": ""
     },
     {
       "espnId": "401872946",
-      "home": "NE",
       "away": "PIT",
+      "home": "NE",
       "kickoff": "2026-09-20T17:00Z",
       "spread": -5.5,
-      "status": "book",
-      "note": "DraftKings line via ESPN"
+      "status": "verified",
+      "note": ""
     },
     {
       "espnId": "401872936",
-      "home": "NYJ",
       "away": "GB",
+      "home": "NYJ",
       "kickoff": "2026-09-20T17:00Z",
-      "spread": 4.5,
-      "status": "book",
-      "note": "DraftKings line via ESPN"
+      "spread": 3.5,
+      "status": "verified",
+      "note": ""
     },
     {
       "espnId": "401872935",
-      "home": "TB",
       "away": "CLE",
+      "home": "TB",
       "kickoff": "2026-09-20T17:00Z",
       "spread": -8.5,
-      "status": "book",
-      "note": "DraftKings line via ESPN"
+      "status": "verified",
+      "note": ""
     },
     {
       "espnId": "401872938",
-      "home": "BAL",
       "away": "NO",
+      "home": "BAL",
       "kickoff": "2026-09-20T17:00Z",
-      "spread": -7.5,
-      "status": "book",
-      "note": "DraftKings line via ESPN"
+      "spread": -8.5,
+      "status": "unverified",
+      "note": "read from the home side only"
     },
     {
       "espnId": "401872934",
-      "home": "HOU",
       "away": "CIN",
+      "home": "HOU",
       "kickoff": "2026-09-20T17:00Z",
-      "spread": -3.0,
-      "status": "book",
-      "note": "DraftKings line via ESPN"
+      "spread": -2.5,
+      "status": "verified",
+      "note": ""
     },
     {
       "espnId": "401872940",
-      "home": "DEN",
       "away": "JAX",
+      "home": "DEN",
       "kickoff": "2026-09-20T20:05Z",
       "spread": -2.5,
-      "status": "book",
-      "note": "DraftKings line via ESPN"
+      "status": "verified",
+      "note": ""
     },
     {
       "espnId": "401872941",
-      "home": "LAC",
       "away": "LV",
+      "home": "LAC",
       "kickoff": "2026-09-20T20:05Z",
       "spread": -6.5,
-      "status": "book",
-      "note": "DraftKings line via ESPN"
+      "status": "verified",
+      "note": ""
     },
     {
       "espnId": "401872944",
-      "home": "DAL",
       "away": "WSH",
+      "home": "DAL",
       "kickoff": "2026-09-20T20:25Z",
-      "spread": -4.5,
-      "status": "book",
-      "note": "DraftKings line via ESPN"
+      "spread": -4.0,
+      "status": "unverified",
+      "note": "read from the away side only"
     },
     {
       "espnId": "401872943",
-      "home": "ARI",
       "away": "SEA",
+      "home": "ARI",
       "kickoff": "2026-09-20T20:25Z",
-      "spread": 3.5,
-      "status": "book",
-      "note": "DraftKings line via ESPN"
+      "spread": 4.0,
+      "status": "unverified",
+      "note": "read from the away side only"
     },
     {
       "espnId": "401872942",
-      "home": "SF",
       "away": "MIA",
+      "home": "SF",
       "kickoff": "2026-09-20T20:25Z",
-      "spread": -13.5,
-      "status": "book",
-      "note": "DraftKings line via ESPN"
+      "spread": -13.0,
+      "status": "unverified",
+      "note": "read from the away side only"
     },
     {
       "espnId": "401872945",
-      "home": "KC",
       "away": "IND",
+      "home": "KC",
       "kickoff": "2026-09-21T00:20Z",
-      "spread": -6.5,
-      "status": "book",
-      "note": "DraftKings line via ESPN"
+      "spread": null,
+      "status": "missing",
+      "note": "no spread found on the Circa sheet"
     },
     {
       "espnId": "401872947",
-      "home": "LAR",
       "away": "NYG",
+      "home": "LAR",
       "kickoff": "2026-09-22T00:15Z",
       "spread": -7.0,
-      "status": "book",
-      "note": "DraftKings line via ESPN"
+      "status": "verified",
+      "note": ""
     }
   ]
 }
