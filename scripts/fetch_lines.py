@@ -1,25 +1,29 @@
 #!/usr/bin/env python3
 """
-Pull the current week's Circa Sports Million contest point spreads and write
-them to data/lines/week-N.json.
+Pull the week's NFL point spreads and write them to data/lines/week-N.json.
 
-Circa publishes the weekly contest spreads as an image-only PDF (posted around
-10am PT each Thursday). This script:
+By default the numbers come from the sportsbook line ESPN publishes alongside
+its scoreboard (DraftKings at the time of writing). ESPN supplies the matchup,
+home/away, kickoff and the spread in one CORS-open call, so there is nothing to
+OCR and no extra binaries to install.
 
-  1. Finds the newest "Contest Point Spreads" PDF via the circasports.com
-     WordPress media API.
-  2. Renders it and OCRs the two-column grid.
-  3. Cross-validates every parsed game against ESPN's authoritative NFL
-     schedule for that week -- ESPN supplies the matchup, home/away and kickoff
-     time; the OCR only has to supply the number.
-  4. Writes JSON, flagging anything it is not confident about so it can be
-     fixed by hand in admin.html.
+Book lines move all week, so a week is priced ONCE: the first run that finds a
+number keeps it, and later runs only fill in games that were still blank. Pass
+--force to deliberately re-price a week, or fix an individual game by hand in
+admin.html (hand-set lines always survive a re-run).
+
+The original Circa Sports Million path is still here behind --circa: it finds
+the contest's image-only PDF via the circasports.com WordPress media API, OCRs
+the two-column grid, and cross-checks every parsed game against ESPN's
+schedule. It needs pdftoppm (poppler-utils) and tesseract on the PATH.
 
 Usage:
-    python fetch_lines.py                 # newest published week
+    python fetch_lines.py                 # current week, sportsbook lines
     python fetch_lines.py --week 5        # a specific week
-    python fetch_lines.py --pdf file.pdf --week 5   # a PDF you downloaded
-    python fetch_lines.py --season 2026 --week 5
+    python fetch_lines.py --week 5 --force          # re-price it at today's number
+    python fetch_lines.py --week 5 --schedule-only  # matchups only, fill in by hand
+    python fetch_lines.py --circa                   # Circa contest PDF instead
+    python fetch_lines.py --circa --pdf file.pdf --week 5
 """
 
 from __future__ import annotations
@@ -414,9 +418,52 @@ def espn_schedule(season: int, week: int) -> list[dict]:
             "kickoff": ev.get("date"),
             "shortName": ev.get("shortName"),
             "bookSpread": book,
+            # ESPN fills in displayName on some events and only name on others.
+            "bookProvider": (((odds[0].get("provider") or {}).get("displayName")
+                              or (odds[0].get("provider") or {}).get("name"))
+                             if odds else None),
         })
     games.sort(key=lambda g: g["kickoff"] or "")
     return games
+
+
+def current_nfl_week(season: int) -> int | None:
+    """Ask ESPN which regular-season week to pull.
+
+    ESPN keeps pointing at a week for a day or two after its last game ends --
+    on a Tuesday morning it still says "week 2" with all sixteen games final.
+    Taking that at face value means the Tuesday cron re-pulls a finished week
+    and never creates the next one, so once every game is complete we advance.
+    """
+    try:
+        data = get_json(ESPN_SCOREBOARD)
+        wk = (data.get("week") or {}).get("number")
+        styp = (data.get("season") or {}).get("type")
+        if isinstance(styp, dict):
+            styp = styp.get("type")
+        if not wk or styp not in (None, 2):
+            return None
+        wk = int(wk)
+        events = data.get("events") or []
+        done = [(((e.get("competitions") or [{}])[0].get("status") or {})
+                 .get("type") or {}).get("completed") for e in events]
+        if done and all(done):
+            wk = min(wk + 1, 18)
+        return wk
+    except Exception:
+        return None
+
+
+def previous_week_meta(week: int) -> dict:
+    """The source/warnings already recorded for a week, if any."""
+    path = os.path.join(LINES_DIR, f"week-{week}.json")
+    if not os.path.exists(path):
+        return {}
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except Exception:
+        return {}
 
 
 def reconcile(rows: list[dict], schedule: list[dict],
@@ -497,12 +544,18 @@ def reconcile(rows: list[dict], schedule: list[dict],
 # main
 # --------------------------------------------------------------------------
 
-def keep_manual(week: int, games: list[dict]) -> list[dict]:
-    """Don't let a scrape overwrite a line someone fixed by hand.
+def keep_manual(week: int, games: list[dict], freeze: bool = False) -> list[dict]:
+    """Don't let a re-run overwrite a line that is already settled.
 
     A spread edited in admin.html is marked "manual". The scraper has no way to
     know better than the person who read the sheet, so those survive a re-run
     unless --force says otherwise.
+
+    With freeze=True (the sportsbook path) the same protection covers *every*
+    line that already has a number, not just the hand-set ones. Book lines move
+    all week; the pool's number is whichever one was showing when the week was
+    first pulled, so later runs only fill in games that were still blank. Pass
+    --force to deliberately re-price a week.
     """
     path = os.path.join(LINES_DIR, f"week-{week}.json")
     if not os.path.exists(path):
@@ -514,10 +567,16 @@ def keep_manual(week: int, games: list[dict]) -> list[dict]:
         return games
     for g in games:
         prev = old.get(str(g.get("espnId")))
-        if prev and prev.get("status") == "manual" and prev.get("spread") is not None:
+        if not prev or prev.get("spread") is None:
+            continue
+        if prev.get("status") == "manual":
             g["spread"] = prev["spread"]
             g["status"] = "manual"
             g["note"] = "set by hand; kept over the scraped value"
+        elif freeze:
+            g["spread"] = prev["spread"]
+            g["status"] = prev.get("status", g["status"])
+            g["note"] = prev.get("note", g["note"])
     return games
 
 
@@ -572,37 +631,91 @@ def main() -> int:
                     help="exit non-zero if any game is not confidently parsed")
     ap.add_argument("--dry-run", action="store_true", help="print, do not write")
     ap.add_argument("--force", action="store_true",
-                    help="overwrite lines that were set by hand in admin.html")
+                    help="re-price the week at today's numbers instead of "
+                         "keeping the ones already on file (hand-set lines "
+                         "are still kept)")
+    ap.add_argument("--overwrite-manual", action="store_true",
+                    help="also replace lines that were set by hand in admin.html")
     ap.add_argument("--schedule-only", action="store_true",
                     help="build the week from ESPN's schedule with blank "
                          "spreads, to be filled in with admin.html")
+    ap.add_argument("--circa", action="store_true",
+                    help="use the Circa contest PDF (OCR) instead of the "
+                         "sportsbook feed; needs pdftoppm and tesseract")
     ap.add_argument("--espn-odds", action="store_true",
-                    help="fill the week with ESPN's sportsbook line as a "
-                         "placeholder until Circa's sheet is posted")
+                    help=argparse.SUPPRESS)   # now the default; kept for old callers
     args = ap.parse_args()
 
-    if args.schedule_only or args.espn_odds:
+    if not args.circa and not args.pdf:
         if args.week is None:
-            return int(bool(sys.stderr.write(
-                "error: --schedule-only / --espn-odds needs --week\n")))
+            args.week = current_nfl_week(args.season)
+            if args.week is None:
+                return int(bool(sys.stderr.write(
+                    "error: could not work out the current week; pass --week\n")))
+            print(f"current week per ESPN: {args.week}", file=sys.stderr)
+
         schedule = espn_schedule(args.season, args.week)
-        games, warn = [], []
+        if not schedule:
+            return int(bool(sys.stderr.write(
+                f"error: ESPN has no schedule for {args.season} "
+                f"week {args.week}\n")))
+
+        providers, games, warn = set(), [], []
         for g in schedule:
             book = g.pop("bookSpread", None)
+            provider = g.pop("bookProvider", None)
             g.pop("shortName", None)
-            if args.espn_odds and book is not None:
+            if not args.schedule_only and book is not None:
+                if provider:
+                    providers.add(provider)
                 games.append({**g, "spread": book, "status": "book",
-                              "note": "sportsbook line via ESPN, not the Circa sheet"})
+                              "note": f"{provider} line via ESPN" if provider
+                                      else "sportsbook line via ESPN"})
             else:
                 games.append({**g, "spread": None, "status": "missing",
-                              "note": "waiting on the Circa sheet"})
+                              "note": "no line posted yet"})
                 warn.append(f"{g['away']} @ {g['home']}: no spread")
-        source = ("ESPN sportsbook lines (placeholder until Circa posts)"
-                  if args.espn_odds else "ESPN schedule (no spreads yet)")
+
+        if not args.overwrite_manual:
+            # --force re-prices the book lines but still defers to anything a
+            # human set in admin.html; --overwrite-manual clears that too.
+            games = keep_manual(args.week, games,
+                                freeze=not (args.force or args.schedule_only))
+            warn = [w for w in warn
+                    if not any(w.startswith(f"{g['away']} @ {g['home']}:")
+                               and g["spread"] is not None for g in games)]
+
+        book_name = " / ".join(sorted(providers)) or "sportsbook"
+        source = ("ESPN schedule (no spreads yet)" if args.schedule_only
+                  else f"{book_name} via ESPN")
+
+        # ESPN drops the odds block once a game is final, so re-running a week
+        # that is already played finds nothing and would otherwise stamp the
+        # file with a source it did not come from -- overwriting, say, a Circa
+        # sheet's provenance with "sportsbook via ESPN". If this run learned no
+        # new line, keep what the file already said about itself.
+        if not args.schedule_only and not providers:
+            prev = previous_week_meta(args.week)
+            if prev.get("source"):
+                source = prev["source"]
+                warn = prev.get("warnings", warn)
+
+        if args.dry_run:
+            for g in games:
+                sp = "  --  " if g["spread"] is None else f"{g['spread']:+g}"
+                print(f"{'!!' if g['spread'] is None else '  '} "
+                      f"{g['away']:>4} @ {g['home']:<4} {sp:>6}"
+                      f"{('   <- ' + g['note']) if g['note'] else ''}")
+            return 0
+
         path = write_week(args.season, args.week, games, source, warn)
-        print(f"wrote {path} ({len(games)} games, "
-              f"{len(games) - len(warn)} with a spread)")
-        return 0
+        priced = sum(1 for g in games if g["spread"] is not None)
+        kept = sum(1 for g in games if g["status"] == "manual")
+        print(f"wrote {path} ({len(games)} games, {priced} with a spread"
+              + (f", {kept} hand-set" if kept else "") + f") from {source}")
+        for w in warn:
+            print(f"  warning: {w}", file=sys.stderr)
+        return 1 if (args.strict and warn) else 0
 
     if args.pdf:
         if args.week is None:
@@ -646,7 +759,7 @@ def main() -> int:
                   f"{('   <- ' + g['note']) if g['note'] else ''}")
         return 0
 
-    if not args.force:
+    if not (args.force or args.overwrite_manual):
         games = keep_manual(args.week, games)
         warnings = [w for w in warnings
                     if not any(g["status"] == "manual" and

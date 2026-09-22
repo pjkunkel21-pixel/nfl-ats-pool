@@ -1,6 +1,9 @@
 # fetch_lines.py uses only the Python standard library.
 #
-# It does need two command-line programs on the PATH:
+# The default path (sportsbook lines via ESPN's scoreboard) needs nothing else.
+#
+# Only the optional --circa path, which OCRs the Circa Sports Million contest
+# PDF, needs two command-line programs on the PATH:
 #   pdftoppm   (poppler-utils)  -- renders the Circa PDF to an image
 #   tesseract  (tesseract-ocr)  -- reads the image
 #
