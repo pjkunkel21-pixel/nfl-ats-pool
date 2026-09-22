@@ -1,0 +1,583 @@
+diff --git a/.github/workflows/update-lines.yml b/.github/workflows/update-lines.yml
+index 43fec02..1b64320 100644
+--- a/.github/workflows/update-lines.yml
++++ b/.github/workflows/update-lines.yml
+@@ -1,21 +1,27 @@
+-name: Update Circa lines
++name: Update lines
+ 
+-# Circa posts the week's contest point spreads around 10am PT on Thursday.
+-# This runs a bit after that, then retries later in the day in case the sheet
+-# is late. Committing the same file twice is a no-op, so extra runs are cheap.
++# Sportsbook lines for the coming week go up right after Sunday's games finish.
++# The Tuesday run is the one that prices the week -- whatever the book is
++# showing then becomes the pool's number. The later runs only fill in games
++# that were still blank (a line the book had not posted yet, a flexed game),
++# because fetch_lines.py never overwrites a spread it has already written.
++# Committing an unchanged file is a no-op, so the extra runs are cheap.
+ on:
+   schedule:
+-    - cron: '30 18 * * 4'   # Thu 18:30 UTC = 11:30am PT / 10:30am PDT
+-    - cron: '30 21 * * 4'   # Thu 21:30 UTC — second look
+-    - cron: '0  15 * * 5'   # Fri 15:00 UTC — last safety net before the weekend
++    - cron: '0 14 * * 2'       # Tue 14:00 UTC = 9am CT -- prices the week
++    - cron: '0 14 * * 3,4,5'   # Wed/Thu/Fri -- fill in anything still missing
+   workflow_dispatch:
+     inputs:
+       week:
+-        description: 'NFL week (blank = newest published)'
++        description: 'NFL week (blank = current week per ESPN)'
+         required: false
+       season:
+         description: 'Season year (blank = current)'
+         required: false
++      force:
++        description: 'Re-price the week at today numbers (hand-set lines are kept)'
++        type: boolean
++        default: false
+ 
+ permissions:
+   contents: write
+@@ -30,21 +36,17 @@ jobs:
+     steps:
+       - uses: actions/checkout@v4
+ 
+-      - name: Install OCR tools
+-        run: |
+-          sudo apt-get update -qq
+-          sudo apt-get install -y -qq poppler-utils tesseract-ocr
+-
+       - uses: actions/setup-python@v5
+         with:
+           python-version: '3.11'
+ 
+-      - name: Fetch the Circa spreads
++      - name: Fetch the spreads
+         id: fetch
+         run: |
+           ARGS=""
+           [ -n "${{ inputs.week }}" ]   && ARGS="$ARGS --week ${{ inputs.week }}"
+           [ -n "${{ inputs.season }}" ] && ARGS="$ARGS --season ${{ inputs.season }}"
++          [ "${{ inputs.force }}" = "true" ] && ARGS="$ARGS --force"
+           python scripts/fetch_lines.py $ARGS 2>&1 | tee run.log
+           echo "week=$(ls -t data/lines/week-*.json | head -1 | sed 's/.*week-\(.*\)\.json/\1/')" >> "$GITHUB_OUTPUT"
+ 
+@@ -52,13 +54,14 @@ jobs:
+         if: always()
+         run: |
+           {
+-            echo "### Circa line pull"
++            echo "### Line pull"
+             echo
+             echo '```'
+             cat run.log 2>/dev/null || echo "the fetch step did not produce a log"
+             echo '```'
+             echo
+             echo "Anything flagged above can be fixed in \`admin.html\` on the live site."
++            echo "To re-price a week on purpose, re-run this workflow with **force** ticked."
+           } >> "$GITHUB_STEP_SUMMARY"
+ 
+       - name: Commit
+@@ -69,6 +72,6 @@ jobs:
+           if git diff --cached --quiet; then
+             echo "no line changes"
+           else
+-            git commit -m "Circa lines: week ${{ steps.fetch.outputs.week }}"
++            git commit -m "Lines: week ${{ steps.fetch.outputs.week }}"
+             git push
+           fi
+diff --git a/Code.gs b/Code.gs
+index 404485c..cc69dbf 100644
+--- a/Code.gs
++++ b/Code.gs
+@@ -23,10 +23,23 @@
+ /** Picks per entrant per week. Circa Million uses 5. */
+ var PICKS_PER_WEEK = 5;
+ 
+-/** Weekly deadline, local to Las Vegas: Saturday at 4:00 PM PT. */
+-var LOCK_DAY = 6;        // 0 = Sunday ... 6 = Saturday
+-var LOCK_HOUR = 16;      // 24-hour clock
+-var LOCK_TZ = 'America/Los_Angeles';
++/**
++ * Weekly deadline: Sunday at 12:00 noon Central, the day of the main slate.
++ *
++ * Noon Central is also when the main Sunday window kicks off, so the deadline
++ * and the first kickoff land together by design. Nothing rides on the margin:
++ * submit_() independently refuses any pick on a game that has already started,
++ * so a slow clock cannot let a live game through.
++ *
++ * Six weeks a season carry an international game at 8:30 AM Central, which is
++ * before this deadline. That game is unpickable from the moment it kicks (same
++ * per-game guard), but it can be final while everyone's picks are still hidden.
++ * That is a deliberate choice -- a fixed, easy-to-remember noon was worth more
++ * than a deadline that moves on six unpredictable weeks.
++ */
++var LOCK_DAY = 0;        // 0 = Sunday ... 6 = Saturday
++var LOCK_HOUR = 12;      // 24-hour clock
++var LOCK_TZ = 'America/Chicago';
+ 
+ var SHEET_NAME = 'Picks';
+ var HEADERS = ['submittedAt', 'season', 'week', 'entrant', 'espnId',
+@@ -146,9 +159,14 @@ function schedule_(season, week) {
+ }
+ 
+ /**
+- * The Saturday 4:00 PM PT before the week's Sunday slate. Derived from the
+- * real kickoff times so it stays correct through bye weeks, holiday weeks and
++ * Noon Central on the day of the week's Sunday slate. Derived from the real
++ * kickoff times so it stays correct through bye weeks, holiday weeks and
+  * international kickoffs.
++ *
++ * The anchor is the week's first Sunday kickoff, and the lock is noon on that
++ * same Sunday, so the walk-back loop below normally exits on the first pass.
++ * It still matters in the odd week with no Sunday game at all, where the
++ * anchor falls back to the last game and the loop finds the Sunday before it.
+  */
+ function computeLock_(games) {
+   var times = [];
+@@ -157,7 +175,7 @@ function computeLock_(games) {
+   times.sort(function (a, b) { return a - b; });
+ 
+   // The Sunday slate is where most of the week sits; anchor on the first
+-  // kickoff that falls on a Sunday in Pacific time, else on the last game.
++  // kickoff that falls on a Sunday in LOCK_TZ, else on the last game.
+   var anchor = times[times.length - 1];
+   for (var i = 0; i < times.length; i++) {
+     if (Number(Utilities.formatDate(new Date(times[i]), LOCK_TZ, 'u')) === 7) {
+@@ -176,9 +194,20 @@ function computeLock_(games) {
+   var pad = LOCK_HOUR < 10 ? '0' + LOCK_HOUR : String(LOCK_HOUR);
+   // Build the instant by asking for the offset in effect on that date.
+   var probe = new Date(ymd + 'T12:00:00Z');
+-  var offset = Utilities.formatDate(probe, LOCK_TZ, 'Z');         // e.g. -0700
+-  return new Date(ymd + 'T' + pad + ':00:00' + offset.slice(0, 3) + ':' +
+-                  offset.slice(3)).getTime();
++  var offset = Utilities.formatDate(probe, LOCK_TZ, 'Z');         // e.g. -0600
++  var lock = new Date(ymd + 'T' + pad + ':00:00' + offset.slice(0, 3) + ':' +
++                      offset.slice(3)).getTime();
++
++  // Never hand back a deadline that has already passed when the week opens.
++  // ESPN ships a whole flex week (week 18 especially) as placeholder kickoffs
++  // with no Sunday among them in LOCK_TZ; the walk-back above then lands on
++  // the *previous* Sunday and the week would be born locked. Falling back to
++  // the first kickoff is the conservative read and self-corrects the moment
++  // ESPN publishes real times. On a normal week lock < first kickoff is
++  // impossible, so this never fires -- including the international weeks,
++  // where the 8:30 AM game starts before noon and the noon lock stands.
++  if (lock < times[0]) lock = times[0];
++  return lock;
+ }
+ 
+ // ---------------------------------------------------------------------------
+diff --git a/admin.html b/admin.html
+index a614603..ab7fc47 100644
+--- a/admin.html
++++ b/admin.html
+@@ -58,9 +58,10 @@
+ <body>
+ <div class="wrap">
+   <h1>Line editor</h1>
+-  <p class="lead">The fallback for when the Thursday scraper misreads the Circa PDF —
+-  or when you just want to set the lines by hand. Nothing here touches the live site
+-  until you download the file and commit it.</p>
++  <p class="lead">The fallback for when the weekly pull misses a game — or when you
++  just want to set the lines by hand. A line you set here is marked "manual" and
++  survives every later pull. Nothing here touches the live site until you download
++  the file and commit it.</p>
+ 
+   <div class="bar">
+     <label class="muted" for="wk">Week</label>
+@@ -71,12 +72,13 @@
+ 
+   <div id="msg"></div>
+ 
+-  <h2>Paste from the Circa sheet</h2>
++  <h2>Paste lines from anywhere</h2>
+   <p class="lead" style="margin-bottom:10px">
+-    Open the week's <a href="https://www.circasports.com/circa-million" target="_blank"
+-    rel="noopener">Circa contest spreads PDF</a>, select all the text (or run it through
+-    any OCR) and paste it below. Team nicknames and spreads are matched against the
+-    schedule, so the order and the surrounding junk don't matter.
++    Copy a week's spreads off any sportsbook or odds page — or the
++    <a href="https://www.circasports.com/circa-million" target="_blank"
++    rel="noopener">Circa contest sheet</a> — and paste them below. Team nicknames and
++    spreads are matched against the schedule, so the order and the surrounding junk
++    don't matter.
+   </p>
+   <textarea id="paste" placeholder="Sep 14  4  PATRIOTS   +1&#10;10:00AM  3  DOLPHINS  -1&#10;..."></textarea>
+   <div class="bar" style="margin-top:10px">
+diff --git a/index.html b/index.html
+index 6a00a8c..873db70 100644
+--- a/index.html
++++ b/index.html
+@@ -128,7 +128,7 @@
+   <div class="head-in">
+     <div>
+       <h1 id="poolName">NFL ATS Picks Pool</h1>
+-      <div class="sub" id="poolSub">Five games against the spread, Circa Sports lines.</div>
++      <div class="sub" id="poolSub">Five games against the spread, sportsbook lines.</div>
+     </div>
+     <div class="deadline" id="deadline">
+       <div class="lbl">Picks lock in</div>
+@@ -178,9 +178,9 @@
+   </section>
+ 
+   <footer>
+-    Lines from the <a href="https://www.circasports.com/circa-million" target="_blank" rel="noopener">Circa
+-    Sports Million</a> weekly contest sheet. Scores from ESPN.
+-    Scoring follows Circa: 1 point a winner, ½ a push.
++    Lines and scores from ESPN's sportsbook feed, pulled Tuesday morning and
++    frozen for the week. Scoring follows Circa Million rules: 1 point a winner,
++    ½ a push.
+     <span id="foot-extra"></span>
+   </footer>
+ </div>
+@@ -376,33 +376,44 @@ async function loadRemote(week){
+   }
+ }
+ 
+-/* Fallback deadline when the server can't be reached: Saturday 4pm PT before
+-   the week's first Sunday game. */
++/* Fallback deadline when the server can't be reached: noon Central on the day
++   of the week's Sunday slate. Must stay in step with computeLock_() in
++   Code.gs -- the server's answer is authoritative and this only fills in when
++   the Apps Script call fails, so a mismatch shows up as a clock that jumps
++   when the network comes back. */
++const LOCK_TZ = 'America/Chicago', LOCK_DOW = 'Sun', LOCK_HOUR = 12;
++
+ function localLock(week){
+   const games = ((S.lines[week] || {}).games) || [];
+   const times = games.map(g => Date.parse(g.kickoff)).filter(t => !isNaN(t)).sort((a,b)=>a-b);
+   if (!times.length) return Infinity;
++  const dow = t => new Date(t).toLocaleDateString('en-US',{timeZone:LOCK_TZ,weekday:'short'});
+   let anchor = times[times.length-1];
+   for (const t of times){
+-    if (new Date(t).toLocaleDateString('en-US',{timeZone:'America/Los_Angeles',weekday:'short'}) === 'Sun'){
+-      anchor = t; break;
+-    }
++    if (dow(t) === 'Sun'){ anchor = t; break; }
+   }
++  // Normally a no-op (the anchor is already Sunday); matters only in a week
++  // with no Sunday game, where the anchor falls back to the last game.
+   const d = new Date(anchor);
+   for (let i=0;i<10;i++){
+-    const wd = new Date(d).toLocaleDateString('en-US',{timeZone:'America/Los_Angeles',weekday:'short'});
+-    if (wd === 'Sat') break;
++    if (dow(d.getTime()) === LOCK_DOW) break;
+     d.setTime(d.getTime() - 86400000);
+   }
+-  const ymd = new Date(d).toLocaleDateString('en-CA',{timeZone:'America/Los_Angeles'});
+-  // Pacific is UTC-7 in season (Sept-Oct), UTC-8 after the November change.
+-  const probe = new Date(`${ymd}T20:00:00Z`);
+-  const off = probe.toLocaleString('en-US',{timeZone:'America/Los_Angeles',timeZoneName:'shortOffset'});
++  const ymd = new Date(d).toLocaleDateString('en-CA',{timeZone:LOCK_TZ});
++  // Central is UTC-5 through early November, UTC-6 after the change. Probe the
++  // offset actually in effect on that date rather than assuming either.
++  const probe = new Date(`${ymd}T18:00:00Z`);
++  const off = probe.toLocaleString('en-US',{timeZone:LOCK_TZ,timeZoneName:'shortOffset'});
+   const m = /GMT([+-]\d+)/.exec(off);
+-  const hrs = m ? Number(m[1]) : -8;
++  const hrs = m ? Number(m[1]) : -6;
+   const sign = hrs < 0 ? '-' : '+';
+   const pad = String(Math.abs(hrs)).padStart(2,'0');
+-  return Date.parse(`${ymd}T16:00:00${sign}${pad}:00`);
++  const hh  = String(LOCK_HOUR).padStart(2,'0');
++  const lock = Date.parse(`${ymd}T${hh}:00:00${sign}${pad}:00`);
++  // A flex week can reach us as placeholder kickoffs with no Sunday among
++  // them, which walks the lock back to the previous Sunday -- already past.
++  // Never return a deadline earlier than the week's first kickoff.
++  return lock < times[0] ? times[0] : lock;
+ }
+ 
+ /**
+@@ -445,7 +456,16 @@ function coverMargin(game, sc){
+ }
+ 
+ function gradePick(pick, game, sc){
+-  const m = coverMargin(game, sc);
++  // Grade at the number the pick was actually taken at, not whatever is in the
++  // week file now. Every pick stores its own spread at submit time, so even if
++  // a line were re-pulled mid-week nobody's already-made pick can be re-graded
++  // underneath them. pick.spread is stored from the picker's side; coverMargin
++  // wants the home-relative number. Older picks without one fall back to the
++  // week file, which is what used to happen for everything.
++  const taken = (pick && pick.spread !== null && pick.spread !== undefined)
++    ? { spread: pick.side === 'HOME' ? pick.spread : -pick.spread }
++    : game;
++  const m = coverMargin(taken, sc);
+   if (m === null) return null;                       // not final yet
+   if (Math.abs(m) < 1e-9) return 'push';
+   const homeCovered = m > 0;
+@@ -497,20 +517,28 @@ function renderPick(){
+ 
+   const missing = L.games.filter(g => g.spread === null || g.spread === undefined).length;
+   const unsure  = L.games.filter(g => g.status === 'unverified' || g.status === 'conflict').length;
+-  const book    = L.games.filter(g => g.status === 'book').length;
+   $('alerts').querySelectorAll('.note.lines').forEach(n => n.remove());
+-  if (missing || unsure || book){
++  if (missing || unsure){
+     const n = alertBox(
+-      [book    ? `These are sportsbook lines standing in until Circa posts its ` +
+-                 `Week ${week} sheet (Thursday, about 10am PT).` : '',
+-       missing ? `${missing} game${missing>1?'s have':' has'} no Circa line yet, so ` +
++      [missing ? `${missing} game${missing>1?'s have':' has'} no line yet, so ` +
+                  `${missing>1?'they are':'it is'} not pickable.` : '',
+-       unsure  ? `${unsure} line${unsure>1?'s were':' was'} read from the PDF with less ` +
++       unsure  ? `${unsure} line${unsure>1?'s were':' was'} read with less ` +
+                  `confidence — worth an eyeball in admin.html.` : ''
+       ].filter(Boolean).join(' '));
+     n.classList.add('lines');
+   }
+ 
++  // Name the book and the moment the week was priced, so nobody has to wonder
++  // why the number on the page is not the number showing at the book today.
++  const fx = $('foot-extra');
++  if (fx){
++    const when = L.fetchedAt ? new Date(L.fetchedAt).toLocaleDateString('en-US',
++                   {timeZone:'America/Chicago', month:'short', day:'numeric'}) : null;
++    fx.textContent = L.source
++      ? ` Week ${week} priced from ${L.source}${when ? ' on ' + when : ''}.`
++      : '';
++  }
++
+   const locked = !!R.locked;
+   const now = Date.now();
+ 
+diff --git a/scripts/fetch_lines.py b/scripts/fetch_lines.py
+index def5f4c..5516458 100644
+--- a/scripts/fetch_lines.py
++++ b/scripts/fetch_lines.py
+@@ -1,25 +1,29 @@
+ #!/usr/bin/env python3
+ """
+-Pull the current week's Circa Sports Million contest point spreads and write
+-them to data/lines/week-N.json.
++Pull the week's NFL point spreads and write them to data/lines/week-N.json.
+ 
+-Circa publishes the weekly contest spreads as an image-only PDF (posted around
+-10am PT each Thursday). This script:
++By default the numbers come from the sportsbook line ESPN publishes alongside
++its scoreboard (DraftKings at the time of writing). ESPN supplies the matchup,
++home/away, kickoff and the spread in one CORS-open call, so there is nothing to
++OCR and no extra binaries to install.
+ 
+-  1. Finds the newest "Contest Point Spreads" PDF via the circasports.com
+-     WordPress media API.
+-  2. Renders it and OCRs the two-column grid.
+-  3. Cross-validates every parsed game against ESPN's authoritative NFL
+-     schedule for that week -- ESPN supplies the matchup, home/away and kickoff
+-     time; the OCR only has to supply the number.
+-  4. Writes JSON, flagging anything it is not confident about so it can be
+-     fixed by hand in admin.html.
++Book lines move all week, so a week is priced ONCE: the first run that finds a
++number keeps it, and later runs only fill in games that were still blank. Pass
++--force to deliberately re-price a week, or fix an individual game by hand in
++admin.html (hand-set lines always survive a re-run).
++
++The original Circa Sports Million path is still here behind --circa: it finds
++the contest's image-only PDF via the circasports.com WordPress media API, OCRs
++the two-column grid, and cross-checks every parsed game against ESPN's
++schedule. It needs pdftoppm (poppler-utils) and tesseract on the PATH.
+ 
+ Usage:
+-    python fetch_lines.py                 # newest published week
++    python fetch_lines.py                 # current week, sportsbook lines
+     python fetch_lines.py --week 5        # a specific week
+-    python fetch_lines.py --pdf file.pdf --week 5   # a PDF you downloaded
+-    python fetch_lines.py --season 2026 --week 5
++    python fetch_lines.py --week 5 --force          # re-price it at today's number
++    python fetch_lines.py --week 5 --schedule-only  # matchups only, fill in by hand
++    python fetch_lines.py --circa                   # Circa contest PDF instead
++    python fetch_lines.py --circa --pdf file.pdf --week 5
+ """
+ 
+ from __future__ import annotations
+@@ -414,11 +418,30 @@ def espn_schedule(season: int, week: int) -> list[dict]:
+             "kickoff": ev.get("date"),
+             "shortName": ev.get("shortName"),
+             "bookSpread": book,
++            # ESPN fills in displayName on some events and only name on others.
++            "bookProvider": (((odds[0].get("provider") or {}).get("displayName")
++                              or (odds[0].get("provider") or {}).get("name"))
++                             if odds else None),
+         })
+     games.sort(key=lambda g: g["kickoff"] or "")
+     return games
+ 
+ 
++def current_nfl_week(season: int) -> int | None:
++    """Ask ESPN which regular-season week is live right now."""
++    try:
++        data = get_json(ESPN_SCOREBOARD)
++        wk = (data.get("week") or {}).get("number")
++        styp = ((data.get("season") or {}).get("type"))
++        if isinstance(styp, dict):
++            styp = styp.get("type")
++        if wk and (styp in (None, 2)):
++            return int(wk)
++    except Exception:
++        pass
++    return None
++
++
+ def reconcile(rows: list[dict], schedule: list[dict],
+               strict: bool) -> tuple[list[dict], list[str]]:
+     """Attach each OCR'd spread to the ESPN game it belongs to.
+@@ -497,12 +520,18 @@ def reconcile(rows: list[dict], schedule: list[dict],
+ # main
+ # --------------------------------------------------------------------------
+ 
+-def keep_manual(week: int, games: list[dict]) -> list[dict]:
+-    """Don't let a scrape overwrite a line someone fixed by hand.
++def keep_manual(week: int, games: list[dict], freeze: bool = False) -> list[dict]:
++    """Don't let a re-run overwrite a line that is already settled.
+ 
+     A spread edited in admin.html is marked "manual". The scraper has no way to
+     know better than the person who read the sheet, so those survive a re-run
+     unless --force says otherwise.
++
++    With freeze=True (the sportsbook path) the same protection covers *every*
++    line that already has a number, not just the hand-set ones. Book lines move
++    all week; the pool's number is whichever one was showing when the week was
++    first pulled, so later runs only fill in games that were still blank. Pass
++    --force to deliberately re-price a week.
+     """
+     path = os.path.join(LINES_DIR, f"week-{week}.json")
+     if not os.path.exists(path):
+@@ -514,10 +543,16 @@ def keep_manual(week: int, games: list[dict]) -> list[dict]:
+         return games
+     for g in games:
+         prev = old.get(str(g.get("espnId")))
+-        if prev and prev.get("status") == "manual" and prev.get("spread") is not None:
++        if not prev or prev.get("spread") is None:
++            continue
++        if prev.get("status") == "manual":
+             g["spread"] = prev["spread"]
+             g["status"] = "manual"
+             g["note"] = "set by hand; kept over the scraped value"
++        elif freeze:
++            g["spread"] = prev["spread"]
++            g["status"] = prev.get("status", g["status"])
++            g["note"] = prev.get("note", g["note"])
+     return games
+ 
+ 
+@@ -572,37 +607,80 @@ def main() -> int:
+                     help="exit non-zero if any game is not confidently parsed")
+     ap.add_argument("--dry-run", action="store_true", help="print, do not write")
+     ap.add_argument("--force", action="store_true",
+-                    help="overwrite lines that were set by hand in admin.html")
++                    help="re-price the week at today's numbers instead of "
++                         "keeping the ones already on file (hand-set lines "
++                         "are still kept)")
++    ap.add_argument("--overwrite-manual", action="store_true",
++                    help="also replace lines that were set by hand in admin.html")
+     ap.add_argument("--schedule-only", action="store_true",
+                     help="build the week from ESPN's schedule with blank "
+                          "spreads, to be filled in with admin.html")
++    ap.add_argument("--circa", action="store_true",
++                    help="use the Circa contest PDF (OCR) instead of the "
++                         "sportsbook feed; needs pdftoppm and tesseract")
+     ap.add_argument("--espn-odds", action="store_true",
+-                    help="fill the week with ESPN's sportsbook line as a "
+-                         "placeholder until Circa's sheet is posted")
++                    help=argparse.SUPPRESS)   # now the default; kept for old callers
+     args = ap.parse_args()
+ 
+-    if args.schedule_only or args.espn_odds:
++    if not args.circa and not args.pdf:
+         if args.week is None:
+-            return int(bool(sys.stderr.write(
+-                "error: --schedule-only / --espn-odds needs --week\n")))
++            args.week = current_nfl_week(args.season)
++            if args.week is None:
++                return int(bool(sys.stderr.write(
++                    "error: could not work out the current week; pass --week\n")))
++            print(f"current week per ESPN: {args.week}", file=sys.stderr)
++
+         schedule = espn_schedule(args.season, args.week)
+-        games, warn = [], []
++        if not schedule:
++            return int(bool(sys.stderr.write(
++                f"error: ESPN has no schedule for {args.season} "
++                f"week {args.week}\n")))
++
++        providers, games, warn = set(), [], []
+         for g in schedule:
+             book = g.pop("bookSpread", None)
++            provider = g.pop("bookProvider", None)
+             g.pop("shortName", None)
+-            if args.espn_odds and book is not None:
++            if not args.schedule_only and book is not None:
++                if provider:
++                    providers.add(provider)
+                 games.append({**g, "spread": book, "status": "book",
+-                              "note": "sportsbook line via ESPN, not the Circa sheet"})
++                              "note": f"{provider} line via ESPN" if provider
++                                      else "sportsbook line via ESPN"})
+             else:
+                 games.append({**g, "spread": None, "status": "missing",
+-                              "note": "waiting on the Circa sheet"})
++                              "note": "no line posted yet"})
+                 warn.append(f"{g['away']} @ {g['home']}: no spread")
+-        source = ("ESPN sportsbook lines (placeholder until Circa posts)"
+-                  if args.espn_odds else "ESPN schedule (no spreads yet)")
++
++        if not args.overwrite_manual:
++            # --force re-prices the book lines but still defers to anything a
++            # human set in admin.html; --overwrite-manual clears that too.
++            games = keep_manual(args.week, games,
++                                freeze=not (args.force or args.schedule_only))
++            warn = [w for w in warn
++                    if not any(w.startswith(f"{g['away']} @ {g['home']}:")
++                               and g["spread"] is not None for g in games)]
++
++        book_name = " / ".join(sorted(providers)) or "sportsbook"
++        source = ("ESPN schedule (no spreads yet)" if args.schedule_only
++                  else f"{book_name} via ESPN")
++
++        if args.dry_run:
++            for g in games:
++                sp = "  --  " if g["spread"] is None else f"{g['spread']:+g}"
++                print(f"{'!!' if g['spread'] is None else '  '} "
++                      f"{g['away']:>4} @ {g['home']:<4} {sp:>6}"
++                      f"{('   <- ' + g['note']) if g['note'] else ''}")
++            return 0
++
+         path = write_week(args.season, args.week, games, source, warn)
+-        print(f"wrote {path} ({len(games)} games, "
+-              f"{len(games) - len(warn)} with a spread)")
+-        return 0
++        priced = sum(1 for g in games if g["spread"] is not None)
++        kept = sum(1 for g in games if g["status"] == "manual")
++        print(f"wrote {path} ({len(games)} games, {priced} with a spread"
++              + (f", {kept} hand-set" if kept else "") + f") from {source}")
++        for w in warn:
++            print(f"  warning: {w}", file=sys.stderr)
++        return 1 if (args.strict and warn) else 0
+ 
+     if args.pdf:
+         if args.week is None:
+@@ -646,7 +724,7 @@ def main() -> int:
+                   f"{('   <- ' + g['note']) if g['note'] else ''}")
+         return 0
+ 
+-    if not args.force:
++    if not (args.force or args.overwrite_manual):
+         games = keep_manual(args.week, games)
+         warnings = [w for w in warnings
+                     if not any(g["status"] == "manual" and
+diff --git a/scripts/requirements.txt b/scripts/requirements.txt
+index 2366be1..09df7c8 100644
+--- a/scripts/requirements.txt
++++ b/scripts/requirements.txt
+@@ -1,6 +1,9 @@
+ # fetch_lines.py uses only the Python standard library.
+ #
+-# It does need two command-line programs on the PATH:
++# The default path (sportsbook lines via ESPN's scoreboard) needs nothing else.
++#
++# Only the optional --circa path, which OCRs the Circa Sports Million contest
++# PDF, needs two command-line programs on the PATH:
+ #   pdftoppm   (poppler-utils)  -- renders the Circa PDF to an image
+ #   tesseract  (tesseract-ocr)  -- reads the image
+ #
