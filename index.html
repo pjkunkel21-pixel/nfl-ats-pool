@@ -128,7 +128,7 @@
   <div class="head-in">
     <div>
       <h1 id="poolName">NFL ATS Picks Pool</h1>
-      <div class="sub" id="poolSub">Five games against the spread, Circa Sports lines.</div>
+      <div class="sub" id="poolSub">Five games against the spread, sportsbook lines.</div>
     </div>
     <div class="deadline" id="deadline">
       <div class="lbl">Picks lock in</div>
@@ -178,9 +178,9 @@
   </section>
 
   <footer>
-    Lines from the <a href="https://www.circasports.com/circa-million" target="_blank" rel="noopener">Circa
-    Sports Million</a> weekly contest sheet. Scores from ESPN.
-    Scoring follows Circa: 1 point a winner, ½ a push.
+    Lines and scores from ESPN's sportsbook feed, pulled Tuesday morning and
+    frozen for the week. Scoring follows Circa Million rules: 1 point a winner,
+    ½ a push.
     <span id="foot-extra"></span>
   </footer>
 </div>
@@ -376,33 +376,44 @@ async function loadRemote(week){
   }
 }
 
-/* Fallback deadline when the server can't be reached: Saturday 4pm PT before
-   the week's first Sunday game. */
+/* Fallback deadline when the server can't be reached: noon Central on the day
+   of the week's Sunday slate. Must stay in step with computeLock_() in
+   Code.gs -- the server's answer is authoritative and this only fills in when
+   the Apps Script call fails, so a mismatch shows up as a clock that jumps
+   when the network comes back. */
+const LOCK_TZ = 'America/Chicago', LOCK_DOW = 'Sun', LOCK_HOUR = 12;
+
 function localLock(week){
   const games = ((S.lines[week] || {}).games) || [];
   const times = games.map(g => Date.parse(g.kickoff)).filter(t => !isNaN(t)).sort((a,b)=>a-b);
   if (!times.length) return Infinity;
+  const dow = t => new Date(t).toLocaleDateString('en-US',{timeZone:LOCK_TZ,weekday:'short'});
   let anchor = times[times.length-1];
   for (const t of times){
-    if (new Date(t).toLocaleDateString('en-US',{timeZone:'America/Los_Angeles',weekday:'short'}) === 'Sun'){
-      anchor = t; break;
-    }
+    if (dow(t) === 'Sun'){ anchor = t; break; }
   }
+  // Normally a no-op (the anchor is already Sunday); matters only in a week
+  // with no Sunday game, where the anchor falls back to the last game.
   const d = new Date(anchor);
   for (let i=0;i<10;i++){
-    const wd = new Date(d).toLocaleDateString('en-US',{timeZone:'America/Los_Angeles',weekday:'short'});
-    if (wd === 'Sat') break;
+    if (dow(d.getTime()) === LOCK_DOW) break;
     d.setTime(d.getTime() - 86400000);
   }
-  const ymd = new Date(d).toLocaleDateString('en-CA',{timeZone:'America/Los_Angeles'});
-  // Pacific is UTC-7 in season (Sept-Oct), UTC-8 after the November change.
-  const probe = new Date(`${ymd}T20:00:00Z`);
-  const off = probe.toLocaleString('en-US',{timeZone:'America/Los_Angeles',timeZoneName:'shortOffset'});
+  const ymd = new Date(d).toLocaleDateString('en-CA',{timeZone:LOCK_TZ});
+  // Central is UTC-5 through early November, UTC-6 after the change. Probe the
+  // offset actually in effect on that date rather than assuming either.
+  const probe = new Date(`${ymd}T18:00:00Z`);
+  const off = probe.toLocaleString('en-US',{timeZone:LOCK_TZ,timeZoneName:'shortOffset'});
   const m = /GMT([+-]\d+)/.exec(off);
-  const hrs = m ? Number(m[1]) : -8;
+  const hrs = m ? Number(m[1]) : -6;
   const sign = hrs < 0 ? '-' : '+';
   const pad = String(Math.abs(hrs)).padStart(2,'0');
-  return Date.parse(`${ymd}T16:00:00${sign}${pad}:00`);
+  const hh  = String(LOCK_HOUR).padStart(2,'0');
+  const lock = Date.parse(`${ymd}T${hh}:00:00${sign}${pad}:00`);
+  // A flex week can reach us as placeholder kickoffs with no Sunday among
+  // them, which walks the lock back to the previous Sunday -- already past.
+  // Never return a deadline earlier than the week's first kickoff.
+  return lock < times[0] ? times[0] : lock;
 }
 
 /**
@@ -445,7 +456,16 @@ function coverMargin(game, sc){
 }
 
 function gradePick(pick, game, sc){
-  const m = coverMargin(game, sc);
+  // Grade at the number the pick was actually taken at, not whatever is in the
+  // week file now. Every pick stores its own spread at submit time, so even if
+  // a line were re-pulled mid-week nobody's already-made pick can be re-graded
+  // underneath them. pick.spread is stored from the picker's side; coverMargin
+  // wants the home-relative number. Older picks without one fall back to the
+  // week file, which is what used to happen for everything.
+  const taken = (pick && pick.spread !== null && pick.spread !== undefined)
+    ? { spread: pick.side === 'HOME' ? pick.spread : -pick.spread }
+    : game;
+  const m = coverMargin(taken, sc);
   if (m === null) return null;                       // not final yet
   if (Math.abs(m) < 1e-9) return 'push';
   const homeCovered = m > 0;
@@ -497,18 +517,26 @@ function renderPick(){
 
   const missing = L.games.filter(g => g.spread === null || g.spread === undefined).length;
   const unsure  = L.games.filter(g => g.status === 'unverified' || g.status === 'conflict').length;
-  const book    = L.games.filter(g => g.status === 'book').length;
   $('alerts').querySelectorAll('.note.lines').forEach(n => n.remove());
-  if (missing || unsure || book){
+  if (missing || unsure){
     const n = alertBox(
-      [book    ? `These are sportsbook lines standing in until Circa posts its ` +
-                 `Week ${week} sheet (Thursday, about 10am PT).` : '',
-       missing ? `${missing} game${missing>1?'s have':' has'} no Circa line yet, so ` +
+      [missing ? `${missing} game${missing>1?'s have':' has'} no line yet, so ` +
                  `${missing>1?'they are':'it is'} not pickable.` : '',
-       unsure  ? `${unsure} line${unsure>1?'s were':' was'} read from the PDF with less ` +
+       unsure  ? `${unsure} line${unsure>1?'s were':' was'} read with less ` +
                  `confidence — worth an eyeball in admin.html.` : ''
       ].filter(Boolean).join(' '));
     n.classList.add('lines');
+  }
+
+  // Name the book and the moment the week was priced, so nobody has to wonder
+  // why the number on the page is not the number showing at the book today.
+  const fx = $('foot-extra');
+  if (fx){
+    const when = L.fetchedAt ? new Date(L.fetchedAt).toLocaleDateString('en-US',
+                   {timeZone:'America/Chicago', month:'short', day:'numeric'}) : null;
+    fx.textContent = L.source
+      ? ` Week ${week} priced from ${L.source}${when ? ' on ' + when : ''}.`
+      : '';
   }
 
   const locked = !!R.locked;

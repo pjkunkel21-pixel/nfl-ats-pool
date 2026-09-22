@@ -23,10 +23,23 @@
 /** Picks per entrant per week. Circa Million uses 5. */
 var PICKS_PER_WEEK = 5;
 
-/** Weekly deadline, local to Las Vegas: Saturday at 4:00 PM PT. */
-var LOCK_DAY = 6;        // 0 = Sunday ... 6 = Saturday
-var LOCK_HOUR = 16;      // 24-hour clock
-var LOCK_TZ = 'America/Los_Angeles';
+/**
+ * Weekly deadline: Sunday at 12:00 noon Central, the day of the main slate.
+ *
+ * Noon Central is also when the main Sunday window kicks off, so the deadline
+ * and the first kickoff land together by design. Nothing rides on the margin:
+ * submit_() independently refuses any pick on a game that has already started,
+ * so a slow clock cannot let a live game through.
+ *
+ * Six weeks a season carry an international game at 8:30 AM Central, which is
+ * before this deadline. That game is unpickable from the moment it kicks (same
+ * per-game guard), but it can be final while everyone's picks are still hidden.
+ * That is a deliberate choice -- a fixed, easy-to-remember noon was worth more
+ * than a deadline that moves on six unpredictable weeks.
+ */
+var LOCK_DAY = 0;        // 0 = Sunday ... 6 = Saturday
+var LOCK_HOUR = 12;      // 24-hour clock
+var LOCK_TZ = 'America/Chicago';
 
 var SHEET_NAME = 'Picks';
 var HEADERS = ['submittedAt', 'season', 'week', 'entrant', 'espnId',
@@ -146,9 +159,14 @@ function schedule_(season, week) {
 }
 
 /**
- * The Saturday 4:00 PM PT before the week's Sunday slate. Derived from the
- * real kickoff times so it stays correct through bye weeks, holiday weeks and
+ * Noon Central on the day of the week's Sunday slate. Derived from the real
+ * kickoff times so it stays correct through bye weeks, holiday weeks and
  * international kickoffs.
+ *
+ * The anchor is the week's first Sunday kickoff, and the lock is noon on that
+ * same Sunday, so the walk-back loop below normally exits on the first pass.
+ * It still matters in the odd week with no Sunday game at all, where the
+ * anchor falls back to the last game and the loop finds the Sunday before it.
  */
 function computeLock_(games) {
   var times = [];
@@ -157,7 +175,7 @@ function computeLock_(games) {
   times.sort(function (a, b) { return a - b; });
 
   // The Sunday slate is where most of the week sits; anchor on the first
-  // kickoff that falls on a Sunday in Pacific time, else on the last game.
+  // kickoff that falls on a Sunday in LOCK_TZ, else on the last game.
   var anchor = times[times.length - 1];
   for (var i = 0; i < times.length; i++) {
     if (Number(Utilities.formatDate(new Date(times[i]), LOCK_TZ, 'u')) === 7) {
@@ -176,9 +194,20 @@ function computeLock_(games) {
   var pad = LOCK_HOUR < 10 ? '0' + LOCK_HOUR : String(LOCK_HOUR);
   // Build the instant by asking for the offset in effect on that date.
   var probe = new Date(ymd + 'T12:00:00Z');
-  var offset = Utilities.formatDate(probe, LOCK_TZ, 'Z');         // e.g. -0700
-  return new Date(ymd + 'T' + pad + ':00:00' + offset.slice(0, 3) + ':' +
-                  offset.slice(3)).getTime();
+  var offset = Utilities.formatDate(probe, LOCK_TZ, 'Z');         // e.g. -0600
+  var lock = new Date(ymd + 'T' + pad + ':00:00' + offset.slice(0, 3) + ':' +
+                      offset.slice(3)).getTime();
+
+  // Never hand back a deadline that has already passed when the week opens.
+  // ESPN ships a whole flex week (week 18 especially) as placeholder kickoffs
+  // with no Sunday among them in LOCK_TZ; the walk-back above then lands on
+  // the *previous* Sunday and the week would be born locked. Falling back to
+  // the first kickoff is the conservative read and self-corrects the moment
+  // ESPN publishes real times. On a normal week lock < first kickoff is
+  // impossible, so this never fires -- including the international weeks,
+  // where the 8:30 AM game starts before noon and the noon lock stands.
+  if (lock < times[0]) lock = times[0];
+  return lock;
 }
 
 // ---------------------------------------------------------------------------

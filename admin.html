@@ -58,9 +58,10 @@
 <body>
 <div class="wrap">
   <h1>Line editor</h1>
-  <p class="lead">The fallback for when the Thursday scraper misreads the Circa PDF —
-  or when you just want to set the lines by hand. Nothing here touches the live site
-  until you download the file and commit it.</p>
+  <p class="lead">The fallback for when the weekly pull misses a game — or when you
+  just want to set the lines by hand. A line you set here is marked "manual" and
+  survives every later pull. Nothing here touches the live site until you download
+  the file and commit it.</p>
 
   <div class="bar">
     <label class="muted" for="wk">Week</label>
@@ -71,12 +72,13 @@
 
   <div id="msg"></div>
 
-  <h2>Paste from the Circa sheet</h2>
+  <h2>Paste lines from anywhere</h2>
   <p class="lead" style="margin-bottom:10px">
-    Open the week's <a href="https://www.circasports.com/circa-million" target="_blank"
-    rel="noopener">Circa contest spreads PDF</a>, select all the text (or run it through
-    any OCR) and paste it below. Team nicknames and spreads are matched against the
-    schedule, so the order and the surrounding junk don't matter.
+    Copy a week's spreads off any sportsbook or odds page — or the
+    <a href="https://www.circasports.com/circa-million" target="_blank"
+    rel="noopener">Circa contest sheet</a> — and paste them below. Team nicknames and
+    spreads are matched against the schedule, so the order and the surrounding junk
+    don't matter.
   </p>
   <textarea id="paste" placeholder="Sep 14  4  PATRIOTS   +1&#10;10:00AM  3  DOLPHINS  -1&#10;..."></textarea>
   <div class="bar" style="margin-top:10px">
