@@ -1,13 +1,24 @@
-name: Update Circa lines
+name: Update lines
 
-# Circa posts the week's contest point spreads around 10am PT on Thursday.
-# This runs a bit after that, then retries later in the day in case the sheet
-# is late. Committing the same file twice is a no-op, so extra runs are cheap.
+# Prices the coming week at noon Central on Tuesday, then only fills in games
+# that were still blank for the rest of the week.
+#
+# The Tuesday run is the one that matters: the week file freezes on its first
+# pull (keep_manual(freeze=True) in fetch_lines.py), so whatever the book is
+# showing around Tuesday noon becomes the pool's number for the week. The
+# Wed/Thu/Fri runs cannot move a line that already has a number -- they exist
+# for games with no spread posted yet on Tuesday.
+#
+# GitHub's scheduler runs late, historically 1.5-3 hours on this repo, and it
+# only ever runs late, never early. The noon-Central guard below is what keeps
+# the pricing run from landing before noon; the drift decides how long after.
 on:
   schedule:
-    - cron: '30 18 * * 4'   # Thu 18:30 UTC = 11:30am PT / 10:30am PDT
-    - cron: '30 21 * * 4'   # Thu 21:30 UTC — second look
-    - cron: '0  15 * * 5'   # Fri 15:00 UTC — last safety net before the weekend
+    - cron: '0 17 * * 2'   # Tue 17:00 UTC = noon CDT (through Nov 1)
+    - cron: '0 18 * * 2'   # Tue 18:00 UTC = noon CST (after Nov 1)
+    - cron: '0 17 * * 3'   # Wed - fill blanks
+    - cron: '0 17 * * 4'   # Thu - fill blanks
+    - cron: '0 15 * * 5'   # Fri - last safety net before the weekend
   workflow_dispatch:
     inputs:
       week:
@@ -16,6 +27,10 @@ on:
       season:
         description: 'Season year (blank = current)'
         required: false
+      circa:
+        description: 'Read the Circa contest PDF instead of the sportsbook feed'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -30,29 +45,54 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Only one of the two Tuesday crons is noon Central on any given date --
+      # 17:00 UTC while the US is on CDT, 18:00 UTC after the change. Rather
+      # than guess which, both are scheduled and the one that lands before noon
+      # Central is skipped. A manual dispatch is never skipped.
+      - name: Hold the pricing run until noon Central
+        id: gate
+        run: |
+          DOW=$(TZ=America/Chicago date +%u)
+          HOUR=$(TZ=America/Chicago date +%-H)
+          echo "Central time now: $(TZ=America/Chicago date '+%a %Y-%m-%d %H:%M %Z')"
+          if [ "${{ github.event_name }}" = "schedule" ] \
+             && [ "$DOW" = "2" ] && [ "$HOUR" -lt 12 ]; then
+            echo "before noon Central on a Tuesday -- leaving the week unpriced"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Install OCR tools
+        if: steps.gate.outputs.run == 'true' && inputs.circa
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq poppler-utils tesseract-ocr
 
       - uses: actions/setup-python@v5
+        if: steps.gate.outputs.run == 'true'
         with:
           python-version: '3.11'
 
-      - name: Fetch the Circa spreads
+      - name: Fetch the spreads
         id: fetch
+        if: steps.gate.outputs.run == 'true'
         run: |
           ARGS=""
           [ -n "${{ inputs.week }}" ]   && ARGS="$ARGS --week ${{ inputs.week }}"
           [ -n "${{ inputs.season }}" ] && ARGS="$ARGS --season ${{ inputs.season }}"
+          [ "${{ inputs.circa }}" = "true" ] && ARGS="$ARGS --circa"
           python scripts/fetch_lines.py $ARGS 2>&1 | tee run.log
-          echo "week=$(ls -t data/lines/week-*.json | head -1 | sed 's/.*week-\(.*\)\.json/\1/')" >> "$GITHUB_OUTPUT"
+          # Take the week from the path the script says it wrote, rather than
+          # from whichever file happens to have the newest mtime.
+          WEEK=$(sed -n 's#.*week-\([0-9]\{1,2\}\)\.json.*#\1#p' run.log | head -1)
+          echo "week=$WEEK" >> "$GITHUB_OUTPUT"
 
       - name: Job summary
-        if: always()
+        if: always() && steps.gate.outputs.run == 'true'
         run: |
           {
-            echo "### Circa line pull"
+            echo "### Line pull"
             echo
             echo '```'
             cat run.log 2>/dev/null || echo "the fetch step did not produce a log"
@@ -62,6 +102,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Commit
+        if: steps.gate.outputs.run == 'true'
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -69,6 +110,10 @@ jobs:
           if git diff --cached --quiet; then
             echo "no line changes"
           else
-            git commit -m "Circa lines: week ${{ steps.fetch.outputs.week }}"
+            WEEK="${{ steps.fetch.outputs.week }}"
+            # Label the commit with the book the lines actually came from. The
+            # old message said "Circa" no matter what the source was.
+            SOURCE=$(jq -r '.source // "unknown source"' "data/lines/week-$WEEK.json" 2>/dev/null || echo "unknown source")
+            git commit -m "Lines: week $WEEK ($SOURCE)"
             git push
           fi
