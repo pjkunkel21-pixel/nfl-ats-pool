@@ -1,0 +1,135 @@
+{
+  "season": 2026,
+  "week": 8,
+  "source": "DraftKings via ESPN",
+  "fetchedAt": "2026-10-27T21:04:05+00:00",
+  "warnings": [],
+  "games": [
+    {
+      "espnId": "401873023",
+      "home": "GB",
+      "away": "CAR",
+      "kickoff": "2026-10-30T00:15Z",
+      "spread": -3.5,
+      "status": "book",
+      "note": "DraftKings line via ESPN"
+    },
+    {
+      "espnId": "401873026",
+      "home": "BUF",
+      "away": "BAL",
+      "kickoff": "2026-11-01T18:00Z",
+      "spread": -3.5,
+      "status": "book",
+      "note": "DraftKings line via ESPN"
+    },
+    {
+      "espnId": "401873031",
+      "home": "CIN",
+      "away": "TEN",
+      "kickoff": "2026-11-01T18:00Z",
+      "spread": -10.5,
+      "status": "book",
+      "note": "DraftKings line via ESPN"
+    },
+    {
+      "espnId": "401873024",
+      "home": "DAL",
+      "away": "ARI",
+      "kickoff": "2026-11-01T18:00Z",
+      "spread": -6.5,
+      "status": "book",
+      "note": "DraftKings line via ESPN"
+    },
+    {
+      "espnId": "401873030",
+      "home": "DET",
+      "away": "MIN",
+      "kickoff": "2026-11-01T18:00Z",
+      "spread": -3.0,
+      "status": "book",
+      "note": "DraftKings line via ESPN"
+    },
+    {
+      "espnId": "401873029",
+      "home": "NYJ",
+      "away": "LV",
+      "kickoff": "2026-11-01T18:00Z",
+      "spread": -1.5,
+      "status": "book",
+      "note": "DraftKings line via ESPN"
+    },
+    {
+      "espnId": "401873027",
+      "home": "PIT",
+      "away": "CLE",
+      "kickoff": "2026-11-01T18:00Z",
+      "spread": -3.5,
+      "status": "book",
+      "note": "DraftKings line via ESPN"
+    },
+    {
+      "espnId": "401873025",
+      "home": "TB",
+      "away": "ATL",
+      "kickoff": "2026-11-01T18:00Z",
+      "spread": -2.5,
+      "status": "book",
+      "note": "DraftKings line via ESPN"
+    },
+    {
+      "espnId": "401873028",
+      "home": "JAX",
+      "away": "IND",
+      "kickoff": "2026-11-01T18:00Z",
+      "spread": -9.5,
+      "status": "book",
+      "note": "DraftKings line via ESPN"
+    },
+    {
+      "espnId": "401873032",
+      "home": "LAR",
+      "away": "LAC",
+      "kickoff": "2026-11-01T21:05Z",
+      "spread": -6.5,
+      "status": "book",
+      "note": "DraftKings line via ESPN"
+    },
+    {
+      "espnId": "401873033",
+      "home": "DEN",
+      "away": "KC",
+      "kickoff": "2026-11-01T21:25Z",
+      "spread": 1.5,
+      "status": "book",
+      "note": "DraftKings line via ESPN"
+    },
+    {
+      "espnId": "401873034",
+      "home": "MIA",
+      "away": "NE",
+      "kickoff": "2026-11-01T21:25Z",
+      "spread": 7.0,
+      "status": "book",
+      "note": "DraftKings line via ESPN"
+    },
+    {
+      "espnId": "401873035",
+      "home": "WSH",
+      "away": "PHI",
+      "kickoff": "2026-11-02T01:20Z",
+      "spread": -5.5,
+      "status": "book",
+      "note": "DraftKings line via ESPN"
+    },
+    {
+      "espnId": "401873036",
+      "home": "SEA",
+      "away": "CHI",
+      "kickoff": "2026-11-03T01:15Z",
+      "spread": -3.0,
+      "status": "book",
+      "note": "DraftKings line via ESPN"
+    }
+  ]
+}
