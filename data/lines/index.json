@@ -54,7 +54,13 @@
       "season": 2026,
       "games": 15,
       "warnings": 0
+    },
+    {
+      "week": 10,
+      "season": 2026,
+      "games": 14,
+      "warnings": 0
     }
   ],
-  "updatedAt": "2026-11-06T20:40:07+00:00"
+  "updatedAt": "2026-11-10T22:06:20+00:00"
 }
