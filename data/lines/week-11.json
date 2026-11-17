@@ -1,0 +1,126 @@
+{
+  "season": 2026,
+  "week": 11,
+  "source": "Draft Kings via ESPN",
+  "fetchedAt": "2026-11-17T23:42:37+00:00",
+  "warnings": [],
+  "games": [
+    {
+      "espnId": "401873066",
+      "home": "HOU",
+      "away": "IND",
+      "kickoff": "2026-11-20T01:15Z",
+      "spread": -12.5,
+      "status": "book",
+      "note": "Draft Kings line via ESPN"
+    },
+    {
+      "espnId": "401873070",
+      "home": "BUF",
+      "away": "MIA",
+      "kickoff": "2026-11-22T18:00Z",
+      "spread": -16.5,
+      "status": "book",
+      "note": "Draft Kings line via ESPN"
+    },
+    {
+      "espnId": "401873071",
+      "home": "CHI",
+      "away": "NO",
+      "kickoff": "2026-11-22T18:00Z",
+      "spread": -11.5,
+      "status": "book",
+      "note": "Draft Kings line via ESPN"
+    },
+    {
+      "espnId": "401873073",
+      "home": "DAL",
+      "away": "TEN",
+      "kickoff": "2026-11-22T18:00Z",
+      "spread": -8.5,
+      "status": "book",
+      "note": "Draft Kings line via ESPN"
+    },
+    {
+      "espnId": "401873072",
+      "home": "DET",
+      "away": "TB",
+      "kickoff": "2026-11-22T18:00Z",
+      "spread": -7.0,
+      "status": "book",
+      "note": "Draft Kings line via ESPN"
+    },
+    {
+      "espnId": "401873067",
+      "home": "KC",
+      "away": "ARI",
+      "kickoff": "2026-11-22T18:00Z",
+      "spread": -16.5,
+      "status": "book",
+      "note": "Draft Kings line via ESPN"
+    },
+    {
+      "espnId": "401873076",
+      "home": "PHI",
+      "away": "PIT",
+      "kickoff": "2026-11-22T18:00Z",
+      "spread": 4.5,
+      "status": "book",
+      "note": "Draft Kings line via ESPN"
+    },
+    {
+      "espnId": "401873068",
+      "home": "CAR",
+      "away": "BAL",
+      "kickoff": "2026-11-22T18:00Z",
+      "spread": -2.5,
+      "status": "book",
+      "note": "Draft Kings line via ESPN"
+    },
+    {
+      "espnId": "401873074",
+      "home": "LAC",
+      "away": "NYJ",
+      "kickoff": "2026-11-22T21:05Z",
+      "spread": -3.5,
+      "status": "book",
+      "note": "Draft Kings line via ESPN"
+    },
+    {
+      "espnId": "401873075",
+      "home": "DEN",
+      "away": "LV",
+      "kickoff": "2026-11-22T21:25Z",
+      "spread": -10.0,
+      "status": "book",
+      "note": "Draft Kings line via ESPN"
+    },
+    {
+      "espnId": "401873069",
+      "home": "NYG",
+      "away": "JAX",
+      "kickoff": "2026-11-22T21:25Z",
+      "spread": 6.0,
+      "status": "book",
+      "note": "Draft Kings line via ESPN"
+    },
+    {
+      "espnId": "401873077",
+      "home": "SF",
+      "away": "MIN",
+      "kickoff": "2026-11-23T01:20Z",
+      "spread": -3.0,
+      "status": "book",
+      "note": "Draft Kings line via ESPN"
+    },
+    {
+      "espnId": "401873078",
+      "home": "WSH",
+      "away": "CIN",
+      "kickoff": "2026-11-24T01:15Z",
+      "spread": 6.5,
+      "status": "book",
+      "note": "Draft Kings line via ESPN"
+    }
+  ]
+}
